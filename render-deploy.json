@@ -1,0 +1,178 @@
+{
+  "service_type": "web_service",
+  "name": "realestate-zoning-copilot",
+  "environment": "production",
+  "build": {
+    "build_command": "npm install && npm run build",
+    "publish_directory": "./dist",
+    "dockerfile_path": "./Dockerfile",
+    "build_environment": {
+      "NODE_VERSION": "18.17.0",
+      "NPM_VERSION": "9.6.7"
+    }
+  },
+  "start": {
+    "start_command": "node dist/pipeline-orchestrator.js",
+    "health_check_path": "/health",
+    "health_check_timeout_seconds": 10,
+    "health_check_interval_seconds": 30,
+    "restart_policy": "always",
+    "max_restarts": 10
+  },
+  "scaling": {
+    "min_instances": 1,
+    "max_instances": 3,
+    "target_cpu_utilization": 70,
+    "target_memory_utilization": 80,
+    "scaling_policy": "cpu"
+  },
+  "resources": {
+    "instance_type": "starter",
+    "cpu_cores": 2,
+    "memory_gb": 4,
+    "disk_gb": 10
+  },
+  "regions": ["us-west-1", "us-west-2"],
+  "env_vars": {
+    "NODE_ENV": {
+      "value": "production",
+      "secret": false
+    },
+    "MINIMAX_API_KEY": {
+      "value": "{{ secrets.MINIMAX_API_KEY }}",
+      "secret": true
+    },
+    "CEREBRAS_API_KEY": {
+      "value": "{{ secrets.CEREBRAS_API_KEY }}",
+      "secret": true
+    },
+    "ELEVENLABS_API_KEY": {
+      "value": "{{ secrets.ELEVENLABS_API_KEY }}",
+      "secret": true
+    },
+    "BAND_API_KEY": {
+      "value": "{{ secrets.BAND_API_KEY }}",
+      "secret": true
+    },
+    "RESPAN_API_KEY": {
+      "value": "{{ secrets.RESPAN_API_KEY }}",
+      "secret": true
+    },
+    "RTRVR_API_KEY": {
+      "value": "{{ secrets.RTRVR_API_KEY }}",
+      "secret": true
+    },
+    "NEXLA_API_KEY": {
+      "value": "{{ secrets.NEXLA_API_KEY }}",
+      "secret": true
+    },
+    "DATABASE_URL": {
+      "value": "{{ secrets.DATABASE_URL }}",
+      "secret": true
+    },
+    "S3_BUCKET": {
+      "value": "realestate-copilot-voicemails",
+      "secret": false
+    },
+    "S3_ACCESS_KEY": {
+      "value": "{{ secrets.S3_ACCESS_KEY }}",
+      "secret": true
+    },
+    "S3_SECRET_KEY": {
+      "value": "{{ secrets.S3_SECRET_KEY }}",
+      "secret": true
+    },
+    "LOG_LEVEL": {
+      "value": "info",
+      "secret": false
+    },
+    "RESPAN_ENDPOINT": {
+      "value": "https://respan.realestatecopilot.ai/api/v1/telemetry",
+      "secret": false
+    }
+  },
+  "cron_jobs": [
+    {
+      "name": "daily_zoning_scan",
+      "schedule": "0 6 * * *",
+      "command": "node dist/cron/daily-scan.js",
+      "timeout_seconds": 3600
+    },
+    {
+      "name": "weekly_compliance_audit",
+      "schedule": "0 0 * * 0",
+      "command": "node dist/cron/compliance-audit.js",
+      "timeout_seconds": 1800    },
+    {
+      "name": "data_quality_report",
+      "schedule": "0 8 * * 1",
+      "command": "node dist/cron/quality-report.js",
+      "timeout_seconds": 900
+    }
+  ],
+  "logging": {
+    "log_driver": "json-file",
+    "log_options": {
+      "max-size": "100m",
+      "max-file": "3"
+    }
+  },
+  "monitoring": {
+    "enable_health_checks": true,
+    "enable_metrics": true,
+    "metrics_port": 9090,
+    "alert_on_deployment_failure": true,
+    "alert_on_high_error_rate": {
+      "threshold": 0.05,
+      "time_window_minutes": 15
+    },
+    "performance_dashboard_url": "https://respan.realestatecopilot.ai/dashboard"
+  },
+  "backup": {
+    "enabled": true,
+    "schedule": "0 1 * * *",
+    "retention_days": 30,
+    "data_products": [
+      "zoning_development_leads",
+      "zoning_reasoner_outputs",
+      "document_packages",
+      "voicemail_scripts"
+    ],
+    "destination": "s3://realestate-copilot-backups/"
+  },
+  "security": {
+    "cors": {
+      "allowed_origins": [
+        "https://dashboard.realestatecopilot.ai",
+        "https://*.render.com"
+      ],
+      "allowed_methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+      "allowed_headers": ["Content-Type", "Authorization"]
+    },
+    "rate_limiting": {
+      "enabled": true,
+      "requests_per_minute": 100,
+      "burst_size": 50
+    },
+    "ssl": {
+      "enabled": true,
+      "certificate_provider": "letsencrypt",
+      "auto_renew": true
+    }
+  },
+  "notifications": {
+    "deployment": {
+      "email": ["devops@realestatecopilot.ai"],
+      "slack": "#deployments"
+    },
+    "alerts": {
+      "email": ["alerts@realestatecopilot.ai"],
+      "slack": "#alerts",
+      "pagerduty": "realestate-copilot"
+    },
+    "daily_reports": {
+      "email": ["reports@realestatecopilot.ai"],
+      "enabled": true
+    }
+  }
+}

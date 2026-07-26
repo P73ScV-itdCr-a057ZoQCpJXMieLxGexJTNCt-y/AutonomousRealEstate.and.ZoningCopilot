@@ -1,0 +1,280 @@
+{
+  "pipeline_id": "realestate_zoning_pipeline_v1",
+  "name": "Real Estate Zoning Data Pipeline",
+  "description": "Nexla data product pipeline for autonomous real estate zoning co-pilot",
+  "version": "1.0.0",
+  "sources": [
+    {
+      "id": "municipal_feed_source",
+      "type": "http_poll",
+      "config": {
+        "url": "https://api.rtrvr.ai/scrape",
+        "credentials_key": "RTRVR_API_KEY",
+        "poll_interval_seconds": 300,
+        "retry_policy": {
+          "max_retries": 3,
+          "backoff_seconds": 30
+        },
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        }
+      },
+      "transformation_map": [
+        {
+          "input_field": "extracted_metadata.apn",
+          "output_field": "property_id",
+          "transform_type": "direct"
+        },
+        {
+          "input_field": "extracted_metadata.address",
+          "output_field": "address",
+          "transform_type": "direct"
+        },
+        {
+          "input_field": "extracted_metadata.city",
+          "output_field": "city",
+          "transform_type": "direct"
+        },
+        {
+          "input_field": "extracted_metadata.zoning_code",
+          "output_field": "current_zoning",
+          "transform_type": "direct"
+        },
+        {
+          "input_field": "extracted_text",
+          "output_field": "recent_signal_text",
+          "transform_type": "truncate",
+          "params": {
+            "max_length": 500
+          }
+        },
+        {
+          "input_field": "scanned_at",
+          "output_field": "signal_date",
+          "transform_type": "parse_date",
+          "params": {
+            "format": "iso8601"
+          }
+        }
+      ]
+    },
+    {
+      "id": "parcel_database_source",
+      "type": "database",
+      "config": {
+        "connection_string": "postgres://user:pass@localhost:5432/parcel_db",
+        "credentials_key": "DATABASE_CREDENTIALS",
+        "sync_mode": "incremental",
+        "poll_interval_seconds": 3600,
+        "table_name": "parcels",
+        "incremental_column": "updated_at"
+      },
+      "transformation_map": [
+        {
+          "input_field": "apn",
+          "output_field": "property_id",
+          "transform_type": "direct"
+        },
+        {
+          "input_field": "full_address",
+          "output_field": "address",
+          "transform_type": "direct"
+        },
+        {
+          "input_field": "city",
+          "output_field": "city",
+          "transform_type": "direct"
+        },
+        {
+          "input_field": "zoning_code",
+          "output_field": "current_zoning",
+          "transform_type": "direct"
+        },
+        {
+          "input_field": "lot_size_sqft",
+          "output_field": "lot_size_sqft",
+          "transform_type": "direct"
+        }
+      ]
+    }
+  ],
+  "data_products": [
+    {
+      "id": "development_leads_v1",
+      "name": "Development Leads",
+      "description": "Governed data product for real estate development opportunities",
+      "output_schema": "DevelopmentLead",
+      "materialization": "view",
+      "retention_days": 365,
+      "quality_rules": [
+        {
+          "field": "property_id",
+          "rule": "not_null",
+          "severity": "error"
+        },
+        {
+          "field": "property_id",
+          "rule": "regex",
+          "pattern": "^[A-Z0-9-]{6,15}$",
+          "severity": "warning"
+        },
+        {
+          "field": "address",
+          "rule": "not_null",
+          "severity": "error"
+        },
+        {
+          "field": "city",
+          "rule": "not_null",
+          "severity": "error"
+        },
+        {
+          "field": "lot_size_sqft",
+          "rule": "min",
+          "value": 0,
+          "severity": "error"
+        }
+      ],
+      "partitioning": {
+        "key": "signal_date",
+        "interval": "month"
+      }
+    },
+    {
+      "id": "zoning_reasoner_outputs_v1",
+      "name": "Zoning Reasoner Outputs",
+      "description": "MiniMax M3 zoning analysis results with equity assessment",
+      "output_schema": "ZoningReasonerOutput",
+      "materialization": "table",
+      "retention_days": 365,
+      "quality_rules": [
+        {
+          "field": "property_id",
+          "rule": "not_null",
+          "severity": "error"
+        },
+        {
+          "field": "density_add_score",
+          "rule": "between",
+          "min": 0,
+          "max": 100,
+          "severity": "warning"
+        },
+        {
+          "field": "exclusionary_index",
+          "rule": "between",
+          "min": 0,
+          "max": 100,
+          "severity": "warning"
+        }
+      ]
+    },
+    {
+      "id": "document_packages_v1",
+      "name": "Document Packages",
+      "description": "Generated legal and outreach documents",
+      "output_schema": "DocumentPackage",
+      "materialization": "table",
+      "retention_days": 730,
+      "quality_rules": [
+        {
+          "field": "property_id",
+          "rule": "not_null",
+          "severity": "error"
+        },
+        {
+          "field": "planning_department_inquiry",
+          "rule": "not_null",
+          "severity": "error"
+        },
+        {
+          "field": "owner_outreach_letter",
+          "rule": "not_null",
+          "severity": "error"
+        }
+      ]
+    }
+  ],
+  "transformations": [
+    {
+      "id": "enrich_with_parcel_data",
+      "name": "Parcel Data Enrichment",
+      "type": "enrich",
+      "config": {
+        "source": "parcel_database_source",
+        "join_key": "property_id",
+        "fields": ["lot_size_sqft", "base_density_allowed", "last_assessed_value"]
+      }
+    },
+    {
+      "id": "filter_density_keywords",
+      "name": "Density Keyword Filter",
+      "type": "filter",
+      "config": {
+        "field": "recent_signal_text",
+        "condition": "CONTAINS_ANY",
+        "keywords": [
+          "zoning amendment",
+          "density bonus",
+          "lot split",
+          "transit-oriented",
+          "housing element",
+          "specific plan",
+          "adu",
+          "multi-family"
+        ],
+        "action": "keep"
+      }
+    }
+  ],
+  "observability": {
+    "respan_dashboard_url": "https://respan.realestatecopilot.ai/dashboard",
+    "log_level": "info",
+    "alert_thresholds": {
+      "max_latency_seconds": 60,
+      "max_token_usage": 1000000,
+      "min_success_rate": 0.90
+    },
+    "metrics": [
+      "records_processed",
+      "records_failed",
+      "avg_processing_time_ms",
+      "token_usage",
+      "api_latency_ms"
+    ]
+  },
+  "governance": {
+    "access_control": {
+      "roles": [
+        {
+          "name": "analyst",
+          "permissions": ["read"]
+        },
+        {
+          "name": "developer",
+          "permissions": ["read", "write", "execute"]
+        },
+        {
+          "name": "admin",
+          "permissions": ["read", "write", "execute", "admin"]
+        }
+      ]
+    },
+    "data_quality": {
+      "enabled": true,
+      "validation_schedule": "daily",
+      "report_destination": "email"
+    },
+    "lineage": {
+      "track_sources": true,
+      "audit_log": true,
+      "retention_days": 365
+    },
+    "pii_protection": {
+      "enabled": true,
+      "fields_to_mask": ["owner_name", "owner_address"],
+      "masking_algorithm": "partial"
+    }
+  }
+}
