@@ -1,0 +1,249 @@
+# ============================================================
+# FILE: .gitignore
+# ============================================================
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# TypeScript
+*.tsbuildinfo
+dist/
+build/
+*.d.ts
+*.js.map
+*.js
+!*.test.ts
+!*.spec.ts
+!*.config.js
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+
+# Logs
+logs/
+*.log
+*.log.*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+*.iml
+.project
+.classpath
+.settings/
+
+# Testing
+coverage/
+.nyc_output/
+test-results/
+jest-results.json
+*.test.ts.snap
+
+# Build artifacts
+*.tmp
+*.temp
+.cache/
+.eslintcache
+
+# Docker
+docker-compose.override.yml
+*.dockerignore
+Dockerfile.*.tmp
+
+# IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.code-workspace
+
+# AWS
+.aws/
+credentials
+config
+
+# Secrets
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.truststore
+*.secret
+*.secrets
+secrets/
+security/
+
+# Database
+*.sqlite
+*.db
+*.db-journal
+*.sqlite3
+*.mdb
+*.accdb
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# Audio files
+*.mp3
+*.wav
+*.flac
+*.ogg
+*.m4a
+*.aac
+*.opus
+
+# Documents
+*.pdf
+*.docx
+*.doc
+*.pptx
+*.ppt
+*.xlsx
+*.xls
+
+# Media
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.svg
+*.ico
+*.webp
+*.mp4
+*.mov
+*.avi
+
+# Archives
+*.zip
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+
+# Local development
+.terraform/
+*.tfstate
+*.tfstate.*
+.terragrunt-cache/
+
+# Serverless
+.serverless/
+.esbuild/
+.webpack/
+
+# Sentry
+.sentry-native/
+
+# Vercel
+.vercel/
+
+# Netlify
+.netlify/
+
+# PM2
+.pm2/
+
+# CI/CD
+.github/
+.gitlab/
+.azure/
+.circleci/
+.drone.yml
+.gitlab-ci.yml
+.travis.yml
+
+# Coverage reports
+coverage/
+cover/
+.nyc_output/
+
+# App-specific
+local-data/
+mock-feeds/
+test-outputs/
+scripts/temp/
+
+# Documentation
+docs/_build/
+docs/html/
+docs/latex/
+site/
+
+# Generated files
+generated/
+schema.graphql
+graphql.schema.json
+openapi.json
+swagger.json
+
+# Dependabot
+.github/dependabot.yml
+
+# ESLint/Prettier
+.eslintcache
+.stylelintcache
+.prettierignore
+
+# Miscellaneous
+*.orig
+*.rej
+*.patch
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+.ftpconfig
+.remote-sync.json
+
+# Security sensitive
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.truststore
+*.secret
+*.secrets
+secrets/
+security/
+
+# Ignore all mock data except for test-data directory
+src/test-data/*
+!src/test-data/mock-leads.json
+!src/test-data/mock-zoning-context.txt
+!src/test-data/mock-municipal-feeds/*.json
+!src/test-data/expected-outputs.json
+
+# Ignore but keep directory structure
+logs/
+dist/
+!dist/.gitkeep
+!logs/.gitkeep
