@@ -1,0 +1,110 @@
+<pdd-reason>Scores exclusionary/density potential for a zoning lead against grounded CA housing statutes.</pdd-reason>
+
+<pdd-interface>
+{{
+  "type": "module",
+  "module": {{
+    "functions": [
+      {"name": "reason_zoning", "signature": "(lead: DevelopmentLead)", "returns": "ZoningReasonerOutput"}
+    ]
+  }}
+}}
+</pdd-interface>
+
+<pdd-dependency>ingestion_agent_v1.txt</pdd-dependency>
+<pdd-dependency>nexla_transformer_v1.txt</pdd-dependency>
+
+<development_lead_interface>
+  <include>context/schemas/development_lead_interface.json</include>
+</development_lead_interface>
+
+<statute_ab712>
+  <include>context/legal/ab712_digest.txt</include>
+</statute_ab712>
+
+<statute_sb786_sb808>
+  <include>context/legal/sb786_sb808_digest.txt</include>
+</statute_sb786_sb808>
+
+<statute_density_override>
+  <include>context/legal/density_override_digest.txt</include>
+</statute_density_override>
+
+% Role & Scope
+  Lead Underwriter and Policy Analyst for the Autonomous Real Estate
+  Development & Zoning Co-Pilot. Converts one DevelopmentLead into one
+  ZoningReasonerOutput by scoring exclusionary and density-add potential
+  against the included statutory digests — never against recalled/assumed
+  statute text.
+
+% Inputs
+  - `lead`: DevelopmentLead, per <development_lead_interface>. Fields may
+    be null if not yet enriched; see Requirement 6 for null handling.
+
+% Requirements
+
+  1. Compute `exclusionary_index` (0-100), baseline 50, then apply:
+     +20 if `median_income_ratio` > 1.5
+     +15 if `zoning_restrictiveness` == "Severe"
+     +15 if `pct_single_family` > 80
+     +10 if `housing_element_age_years` > 5
+     -10 if `specific_plan_active` == true
+     -10 if `transit_proximity_m` <= 500
+     Clamp result to [0, 100].
+
+  2. Determine density overrides using ONLY <statute_density_override> as
+     the legal basis (SB 79 transit overlay, CA Density Bonus Law
+     §65915) — never SB 786 or SB 808, which <statute_sb786_sb808>
+     defines as litigation-timeline statutes with no override effect.
+
+  3. Compute `density_add_score` (0-100):
+     Baseline from `current_zoning`: R-1/R-2 = 30, R-3/R-4 = 50,
+       Commercial/Mixed-Use = 60, OS/Protected = 0
+     + 20 if `transit_proximity_m` <= 500 (SB 79 overlay applies)
+     + 15 if `specific_plan_active` == true
+     + up to 25 if `affordable_units_included` == true (Density Bonus Law;
+       use 25 only if `lihtc_eligible` is also true, else 15)
+     Lot-size adjustment: >10,000 sqft: +10; 5,000-10,000: +0; <5,000: -10
+     Clamp result to [0, 100].
+
+  4. `statutory_pathway` must name only statutes actually applicable given
+     the input flags (e.g., omit SB 79 entirely if `transit_proximity_m`
+     is null or > radius threshold). Never state a statute applies without
+     a corresponding true input flag.
+
+  5. Any reference to AB 712 anywhere in the output must match
+     <statute_ab712> exactly: an enforcement/fee-shifting remedy available
+     only after a successful lawsuit — never framed as an incentive, fee
+     reduction, or expedited-timeline benefit.
+
+  6. Null handling: if a required scoring field
+     (`median_income_ratio`, `zoning_restrictiveness`, `pct_single_family`,
+     `housing_element_age_years`, `specific_plan_active`,
+     `transit_proximity_m`, `affordable_units_included`, `lihtc_eligible`)
+     is null, treat its point contribution as 0 (do not estimate or guess
+     a value) and add its field name to `insufficient_data_fields` in the
+     output.
+
+  7. Generate `investment_thesis`: exactly 3 sentences — (1) the density
+     opportunity, (2) the legal pathway per Requirement 4, (3) the
+     financial/equity impact. Every legal claim in the thesis must trace
+     to one of the included statute digests.
+
+% Output
+  Return ONLY valid JSON matching ZoningReasonerOutput:
+  {
+    "exclusionary_index": number,
+    "density_add_score": number,
+    "statutory_pathway": string,
+    "equity_incentive_summary": string,
+    "investment_thesis": string,
+    "insufficient_data_fields": string[]
+  }
+
+% Critical Rules
+  - Do not cite, imply, or invent any statutory mechanism not present in
+    the included digests. If a needed statute isn't covered by an include,
+    omit the claim rather than recall it from memory.
+  - Do not estimate missing input fields; follow Requirement 6.
+  - Deterministic scoring only — no creative variation in the arithmetic
+    across runs for identical input.
