@@ -1,0 +1,456 @@
+{
+  "version": "1.0.0",
+  "pipeline_name": "Autonomous_Real_Estate_Zoning_CoPilot",
+  "description": "End-to-end agent pipeline for municipal data ingestion, zoning analysis, equity reasoning, and voice outreach generation",
+  "environment": "production",
+  "deployment_target": "render_web_service",
+  "observability": {
+    "respan_endpoint": "https://respan.realestatecopilot.ai/api/v1/telemetry",
+    "log_level": "debug",
+    "enable_live_dashboard": true,
+    "telemetry_config": {
+      "track_latency": true,
+      "track_token_usage": true,
+      "track_prompt_versions": true,
+      "track_agent_status": true,
+      "alert_thresholds": {
+        "max_pipeline_latency_ms": 30000,
+        "max_token_usage_per_run": 1000000,
+        "min_success_rate": 0.95,
+        "error_budget_per_hour": 5
+      }
+    }
+  },
+  "agents": [
+    {
+      "id": "rtrvr_ingestion_agent",
+      "name": "Autonomous Municipal Data Scanner",
+      "type": "ingestion",
+      "runtime": "nodejs_18",
+      "config": {
+        "targets": [
+          {
+            "id": "santaclara_planning",
+            "url": "https://www.santaclaraca.gov/government/departments/community-development/planning",
+            "feed_type": "planning_submittals",
+            "scan_interval_minutes": 15,
+            "max_retries": 3,
+            "timeout_seconds": 30
+          },
+          {
+            "id": "sunnyvale_planning",
+            "url": "https://sunnyvale.ca.gov/departments/community-development/planning",
+            "feed_type": "planning_submittals",
+            "scan_interval_minutes": 15,
+            "max_retries": 3,
+            "timeout_seconds": 30
+          },
+          {
+            "id": "san_jose_planning",
+            "url": "https://www.sanjoseca.gov/planning-building-code",
+            "feed_type": "planning_submittals",
+            "scan_interval_minutes": 20,
+            "max_retries": 3,
+            "timeout_seconds": 30
+          }
+        ],
+        "density_keywords": [
+          "zoning amendment",
+          "accessory dwelling unit",
+          "density bonus",
+          "high-density residential",
+          "lot split",
+          "transit-oriented",
+          "housing element review",
+          "specific plan",
+          "adu",
+          "sb 9",
+          "sb 330",
+          "builder's remedy",
+          "multi-family",
+          "mixed-use"
+        ],
+        "drop_keywords": [
+          "demolition only",
+          "roof replacement",
+          "plumbing repair",
+          "electrical upgrade",
+          "interior remodel",
+          "landscape maintenance"
+        ],
+        "output_schema": "DevelopmentLead"
+      },
+      "prompt_hook_path": "/prompts/ingestion_agent_v1.txt",
+      "input_schema": "none",
+      "output_schema": "DevelopmentLead",
+      "max_retries": 3,
+      "timeout_seconds": 60,
+      "memory_mb": 512
+    },
+    {
+      "id": "nexla_transformer",
+      "name": "Nexla Data Product Transformer",
+      "type": "transformation",
+      "runtime": "nodejs_18",
+      "config": {
+        "data_product_id": "zoning_development_leads",
+        "output_format": "json",
+        "batch_size": 50,
+        "max_queue_size": 1000,
+        "data_sources": {
+          "geocoding_provider": "TODO: set provider (e.g. Google Geocoding API, Census Geocoder)",
+          "transit_stop_dataset": "TODO: GTFS feed source for Caltrain/BART/VTA stops",
+          "acs_median_income_source": "TODO: Census ACS 5-year API, tract + county vintage",
+          "parcel_land_use_database": "TODO: Santa Clara County parcel/land-use database connection",
+          "hcd_housing_element_database": "TODO: HCD housing element certification status source",
+          "specific_plan_gis_layer": "TODO: municipal specific-plan boundary GIS layer",
+          "ctcac_lihtc_eligibility_maps": "TODO: CTCAC/HCD LIHTC-eligible tract maps"
+        }
+      },
+      "prompt_hook_path": "/prompts/nexla_transformer_v2.txt",
+      "input_schema": "ScrapedDocument",
+      "output_schema": "DevelopmentLead",
+      "max_retries": 2,
+      "timeout_seconds": 30,
+      "memory_mb": 256
+    },
+    {
+      "id": "minimax_equity_reasoner",
+      "name": "MiniMax M3 Zoning & Equity Reasoner",
+      "type": "reasoning",
+      "runtime": "python_3_11",
+      "config": {
+        "model": "minimax_m3",
+        "context_window": 1000000,
+        "temperature": 0.2,
+        "max_tokens": 4096,
+        "api_endpoint": "https://api.minimax.ai/v1/chat/completions",
+        "cerebras_routing": {
+          "enabled": true,
+          "endpoint": "https://api.cerebras.ai/v1/completions",
+          "fallback_threshold_ms": 2000
+        }
+      },
+      "prompt_hook_path": "/prompts/minimax_reasoner_v2.txt",
+      "input_schema": "DevelopmentLead",
+      "output_schema": "ZoningReasonerOutput",
+      "max_retries": 3,
+      "timeout_seconds": 120,
+      "memory_mb": 1024,
+      "token_estimation": 750000
+    },
+    {
+      "id": "document_generation_engine",
+      "name": "Legal & Outreach Document Generator",
+      "type": "document_generation",
+      "runtime": "nodejs_18",
+      "config": {
+        "document_types": [
+          "planning_department_inquiry",
+          "owner_outreach_letter"
+        ],
+        "date_override": "July 23, 2026",
+        "include_equity_analysis": true,
+        "include_financial_incentives": true,
+        "signature_block": "Development Analytics Team\nAutonomous Real Estate Co-Pilot\n(408) 555-0187\nplanning@realestatecopilot.ai"
+      },
+      "prompt_hook_path": "/prompts/document_generation_v1.txt",
+      "input_schema": "ZoningReasonerOutput",
+      "output_schema": "DocumentPackage",
+      "max_retries": 2,
+      "timeout_seconds": 45,
+      "memory_mb": 256
+    },
+    {
+      "id": "elevenlabs_voicemail_compiler",
+      "name": "ElevenLabs Voicemail Script Compiler",
+      "type": "audio_generation",
+      "runtime": "nodejs_18",
+      "config": {
+        "api_key_env_var": "ELEVENLABS_API_KEY",
+        "voice_id": "pNInz6obpgmA513eg5Wx",
+        "model_id": "eleven_flash_v2_5",
+        "voice_settings": {
+          "stability": 0.45,
+          "similarity_boost": 0.75,
+          "style": 0.1,
+          "use_speaker_boost": true
+        },
+        "audio_formats": ["mp3", "wav"],
+        "compliance": {
+          "entity_name": "Land Equity Partners",
+          "include_ai_disclosure": true,
+          "include_opt_out": true,
+          "opt_out_key": "9",
+          "opt_out_phrase": "stop"
+        },
+        "output_storage": {
+          "type": "s3",
+          "bucket": "realestate-copilot-voicemails",
+          "path": "/voicemails/${property_id}/${timestamp}.mp3"
+        }
+      },
+      "prompt_hook_path": "/prompts/voicemail_compiler_v2.txt",
+      "input_schema": "DocumentPackage",
+      "output_schema": "VoicemailScript",
+      "max_retries": 2,
+      "timeout_seconds": 60,
+      "memory_mb": 512
+    }
+  ],
+  "workflow": {
+    "stages": [
+      {
+        "id": "ingestion_stage",
+        "agent_id": "rtrvr_ingestion_agent",
+        "execution": "scheduled",
+        "schedule": "*/15 * * * *",
+        "next_agent_on_success": "nexla_transformer",
+        "next_agent_on_failure": "error_handler",
+        "parallel_instances": 3,
+        "batch_size": 10
+      },
+      {
+        "id": "transformation_stage",
+        "agent_id": "nexla_transformer",
+        "execution": "sequential",
+        "input_from": "ingestion_stage",
+        "next_agent_on_success": "reasoning_stage",
+        "next_agent_on_failure": "error_handler",
+        "parallel_instances": 1,
+        "batch_size": 50
+      },
+      {
+        "id": "reasoning_stage",
+        "agent_id": "minimax_equity_reasoner",
+        "execution": "parallel",
+        "input_from": "transformation_stage",
+        "next_agent_on_success": "document_generation_stage",
+        "next_agent_on_failure": "error_handler",
+        "parallel_instances": 5,
+        "batch_size": 1,
+        "rate_limit": {
+          "requests_per_minute": 20,
+          "tokens_per_minute": 500000
+        }
+      },
+      {
+        "id": "document_generation_stage",
+        "agent_id": "document_generation_engine",
+        "execution": "parallel",
+        "input_from": "reasoning_stage",
+        "next_agent_on_success": "human_approval_gateway",
+        "next_agent_on_failure": "error_handler",
+        "parallel_instances": 3,
+        "batch_size": 5,
+        "condition": {
+          "field": "density_add_score",
+          "operator": "gte",
+          "value": 75
+        }
+      },
+      {
+        "id": "human_approval_gateway",
+        "agent_id": "band_collaboration_layer",
+        "execution": "manual",
+        "input_from": "document_generation_stage",
+        "config": {
+          "approval_channel": "zoning_approvals",
+          "notification_endpoint": "https://api.band.com/v1/workspaces/realestate-copilot",
+          "timeout_minutes": 1440,
+          "auto_escalate": true,
+          "escalate_after_minutes": 60
+        },
+        "next_agent_on_success": "voicemail_generation_stage",
+        "next_agent_on_failure": "discard",
+        "parallel_instances": 1,
+        "batch_size": 1
+      },
+      {
+        "id": "voicemail_generation_stage",
+        "agent_id": "elevenlabs_voicemail_compiler",
+        "execution": "sequential",
+        "input_from": "human_approval_gateway",
+        "next_agent_on_success": "complete",
+        "next_agent_on_failure": "error_handler",
+        "parallel_instances": 2,
+        "batch_size": 1,
+        "retry_on_failure": true,
+        "max_retries": 3
+      }
+    ],
+    "error_handling": {
+      "error_handler": {
+        "type": "respan_logging",
+        "config": {
+          "log_level": "error",
+          "stack_trace": true,
+          "context_snapshot": true,
+          "alert_on_error": true,
+          "alert_channels": ["email", "slack"]
+        },
+        "retry_policy": {
+          "max_retries": 3,
+          "backoff": "exponential",
+          "initial_delay_seconds": 5,
+          "max_delay_seconds": 300
+        }
+      }
+    },
+    "discard_handling": {
+      "low_score_discard": {
+        "field": "density_add_score",
+        "threshold": 40,
+        "action": "silent_drop",
+        "log_to_respan": true,
+        "reason": "Insufficient density potential"
+      },
+      "protected_land_discard": {
+        "field": "current_zoning",
+        "operator": "eq",
+        "value": "OS",
+        "action": "silent_drop",
+        "log_to_respan": true,
+        "reason": "Open Space / Protected land - no development allowed"
+      }
+    }
+  },
+  "data_flow": {
+    "sources": [
+      {
+        "id": "municipal_feeds",
+        "type": "http_poll",
+        "agents": ["rtrvr_ingestion_agent"]
+      },
+      {
+        "id": "parcel_database",
+        "type": "postgresql",
+        "connection": "postgres://user:pass@localhost:5432/parcel_db",
+        "agents": ["nexla_transformer"]
+      }
+    ],
+    "destinations": [
+      {
+        "id": "respan_dashboard",
+        "type": "observability",
+        "agents": ["all"],
+        "format": "structured_logs"
+      },
+      {
+        "id": "band_workspace",
+        "type": "collaboration",
+        "agents": ["human_approval_gateway"],
+        "format": "structured_message"
+      },
+      {
+        "id": "s3_voicemail_storage",
+        "type": "s3",
+        "agents": ["elevenlabs_voicemail_compiler"],
+        "format": "audio/mpeg"
+      },
+      {
+        "id": "frontend_websocket",
+        "type": "websocket",
+        "agents": ["all"],
+        "endpoint": "wss://dashboard.realestatecopilot.ai/live"
+      }
+    ]
+  },
+  "security": {
+    "api_keys": {
+      "minimax_api_key": {
+        "source": "env_var",
+        "name": "MINIMAX_API_KEY",
+        "scope": "minimax_equity_reasoner"
+      },
+      "cerebras_api_key": {
+        "source": "env_var",
+        "name": "CEREBRAS_API_KEY",
+        "scope": "minimax_equity_reasoner"
+      },
+      "elevenlabs_api_key": {
+        "source": "env_var",
+        "name": "ELEVENLABS_API_KEY",
+        "scope": "elevenlabs_voicemail_compiler"
+      },
+      "band_api_key": {
+        "source": "env_var",
+        "name": "BAND_API_KEY",
+        "scope": "human_approval_gateway"
+      },
+      "respan_api_key": {
+        "source": "env_var",
+        "name": "RESPAN_API_KEY",
+        "scope": "observability"
+      }
+    },
+    "cors": {
+      "allowed_origins": [
+        "https://dashboard.realestatecopilot.ai",
+        "https://*.render.com"
+      ],
+      "allowed_methods": ["GET", "POST", "PUT", "DELETE"]
+    }
+  },
+  "deployment": {
+    "render_config": {
+      "service_type": "web_service",
+      "build_command": "npm install && npm run build",
+      "start_command": "node dist/pipeline-orchestrator.js",
+      "health_check_path": "/health",
+      "env_vars": {
+        "NODE_ENV": "production",
+        "MINIMAX_API_KEY": "{{ secrets.MINIMAX_API_KEY }}",
+        "CEREBRAS_API_KEY": "{{ secrets.CEREBRAS_API_KEY }}",
+        "ELEVENLABS_API_KEY": "{{ secrets.ELEVENLABS_API_KEY }}",
+        "BAND_API_KEY": "{{ secrets.BAND_API_KEY }}",
+        "RESPAN_API_KEY": "{{ secrets.RESPAN_API_KEY }}",
+        "DATABASE_URL": "{{ secrets.DATABASE_URL }}",
+        "S3_BUCKET": "realestate-copilot-voicemails",
+        "S3_ACCESS_KEY": "{{ secrets.S3_ACCESS_KEY }}",
+        "S3_SECRET_KEY": "{{ secrets.S3_SECRET_KEY }}"
+      },
+      "instance_type": "starter",
+      "scaling": {
+        "min_instances": 1,
+        "max_instances": 3,
+        "target_cpu_utilization": 70,
+        "target_memory_utilization": 80
+      },
+      "regions": ["us-west-1"]
+    },
+    "monitoring": {
+      "enable_health_checks": true,
+      "health_check_interval_seconds": 30,
+      "health_check_timeout_seconds": 10,
+      "alert_on_deployment_failure": true,
+      "performance_dashboard_url": "https://respan.realestatecopilot.ai/dashboard"
+    },
+    "backup_config": {
+      "enabled": true,
+      "schedule": "0 0 * * *",
+      "retention_days": 30,
+      "data_products": ["zoning_development_leads", "zoning_reasoner_outputs", "document_packages"]
+    }
+  },
+  "performance_optimization": {
+    "caching": {
+      "enabled": true,
+      "ttl_seconds": 3600,
+      "cache_keys": ["municipal_data", "parcel_lookups", "zoning_context"],
+      "strategy": "least_recently_used",
+      "max_cache_size_mb": 1024
+    },
+    "parallel_processing": {
+      "enabled": true,
+      "max_concurrent_batches": 10,
+      "batch_timeout_seconds": 300
+    },
+    "token_optimization": {
+      "enabled": true,
+      "compression": true,
+      "token_budget": 1000000,
+      "priority_levels": ["high_conviction", "medium_conviction", "low_conviction"]
+    }
+  }
+}
